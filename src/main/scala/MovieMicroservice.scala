@@ -23,11 +23,14 @@ import spray.json.DefaultJsonProtocol
 
 case class MovieInfo(imdbID: String, Title: Option[String], Year: Option[String], Director: Option[String], Actors: Option[String], Plot: Option[String])
 
-case class MovieRequest(imdbID: String)
+case class MovieRequestID(imdbID: String)
+
+case class MovieRequestTitle(query: String)
 
 trait Protocols extends DefaultJsonProtocol {
   implicit val movieInfoFormat = jsonFormat6(MovieInfo.apply)
-  implicit val movieRequestFormat = jsonFormat1(MovieRequest.apply)
+  implicit val movieRequestIDFormat = jsonFormat1(MovieRequestID.apply)
+  implicit val movieRequestTitleFormat = jsonFormat1(MovieRequestTitle.apply)
 }
 
 trait Service extends Protocols {
@@ -44,11 +47,25 @@ trait Service extends Protocols {
 
   def movieApiRequest(request: HttpRequest): Future[HttpResponse] = Source.single(request).via(movieApiConnectionFlow).runWith(Sink.head)
 
-  def fetchMovieInfo(id: MovieRequest): Future[Either[String, MovieInfo]] = {
+  def fetchMovieInfo(id: MovieRequestID): Future[Either[String, MovieInfo]] = {
     movieApiRequest(RequestBuilding.Get(Uri("/").withQuery(Query("i" -> id.imdbID, "r" -> "json")))).flatMap { response =>
       response.status match {
         case OK => Unmarshal(response.entity).to[MovieInfo].map(Right(_))
-        case BadRequest => Future.successful(Left(id + ": incorrect movie id format"))
+        case BadRequest => Future.successful(Left(id.imdbID + ": incorrect movie id format"))
+        case _ => Unmarshal(response.entity).to[String].flatMap { entity =>
+          val error = s"omdbIP request failed with status code ${response.status} and entity $entity"
+          logger.error(error)
+          Future.failed(new IOException(error))
+        }
+      }
+    }
+  }
+
+  def fetchMovieInfo(movie: MovieRequestTitle): Future[Either[String, MovieInfo]] = {
+    movieApiRequest(RequestBuilding.Get(Uri("/").withQuery(Query("t" -> movie.query, "r" -> "json")))).flatMap { response =>
+      response.status match {
+        case OK => Unmarshal(response.entity).to[MovieInfo].map(Right(_))
+        case BadRequest => Future.successful(Left(movie.query + ": incorrect movie id format"))
         case _ => Unmarshal(response.entity).to[String].flatMap { entity =>
           val error = s"omdbIP request failed with status code ${response.status} and entity $entity"
           logger.error(error)
@@ -61,7 +78,15 @@ trait Service extends Protocols {
   val routes = {
     logRequestResult("akka-http-microservice") {
       pathPrefix("movie") {
-        (get & entity(as[MovieRequest])) { movie =>
+        (get & entity(as[MovieRequestID])) { movie =>
+          complete {
+            fetchMovieInfo(movie).map[ToResponseMarshallable] {
+              case Right(movieInfo) => movieInfo
+              case Left(errorMessage) => BadRequest -> errorMessage
+            }
+          }
+        } ~
+        (get & entity(as[MovieRequestTitle])) { movie =>
           complete {
             fetchMovieInfo(movie).map[ToResponseMarshallable] {
               case Right(movieInfo) => movieInfo
@@ -71,7 +96,7 @@ trait Service extends Protocols {
         } ~
         (get & path(Segment)) { id =>
           complete {
-            fetchMovieInfo(MovieRequest(id)).map[ToResponseMarshallable] {
+            fetchMovieInfo(MovieRequestID(id)).map[ToResponseMarshallable] {
               case Right(movieInfo) => movieInfo
               case Left(errorMessage) => BadRequest -> errorMessage
             }

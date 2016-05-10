@@ -16,7 +16,22 @@ $ sbt
 Once the code starts running, it can be stopped by pressing enter
 
 By default it runs a server at `http://localhost:8080` which can be queried
-for movies via `imdbId` like this:
+for movies via a search string like this:
+
+``` shell
+$ curl -X GET -H 'Content-Type: application/json' http://localhost:8080/movie -d '{"query": "The Force Awakens"}'
+
+{
+  "Title": "Star Wars: Episode VII - The Force Awakens",
+  "Year": "2015",
+  "Director": "J.J. Abrams",
+  "Plot": "Three decades after the defeat of the Galactic Empire, a new threat arises. The First Order attempts to rule the galaxy and only a ragtag group of heroes can stop them, along with the help of the Resistance.",
+  "imdbID": "tt2488496",
+  "Actors": "Harrison Ford, Mark Hamill, Carrie Fisher, Adam Driver"
+}
+```
+
+Also it supports searching via `imdbId`:
 
 ``` shell
 $ curl http://localhost:8080/movie/tt0109830
@@ -28,7 +43,7 @@ $ curl http://localhost:8080/movie/tt0109830
   "Plot": "Forrest Gump, while not intelligent, has accidentally been present at many historic moments, but his true love, Jenny Curran, eludes him.",
   "imdbID": "tt0109830",
   "Actors": "Tom Hanks, Rebecca Williams, Sally Field, Michael Conner Humphreys"
-}<Paste>
+}
 ```
 
 It also supports `JSON` encoded `imdbID`:
